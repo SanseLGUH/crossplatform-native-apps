@@ -5,51 +5,53 @@ use std::sync::Arc;
 
 use serde_json::json;
 
-struct Websocket_TRY_Connect;
+pub struct Websocket_CONNECTED {
+    pub mutex_stream: Arc<Mutex< WebSocketStream<MaybeTlsStream<TcpStream>> >> 
+}
 
-struct Websocket_CONNECTED;
-
-// writer: SplitSink<WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>, tokio_tungstenite::tungstenite::Message>, 
-
-impl Websocket_TRY_Connect {
-    pub async fn connect() -> Result<Websocket_CONNECTED, ()> {
-        let (mut stream, _) = connect_async("wss://gateway.discord.gg/?encoding=json&v=9").await.unwrap();
-        
-        // stream.send(Message::Text("Hello world".into() ));
-
-        todo!();
-    }
-
-    fn send_idetify(stream: &mut WebSocketStream<MaybeTlsStream<TcpStream>>, token: &str) {
-        let payload = json!({
-            "op": 2,
-            "d": {
-                "token": token,
-                "properties": {
-                    "os": "Croissant Software",
-                    "device": "Croissant"
-                }
+fn send_idetify(stream: &mut WebSocketStream<MaybeTlsStream<TcpStream>>, token: &str) {
+    let payload = json!({
+        "op": 2,
+        "d": {
+            "token": token,
+            "properties": {
+                "os": "Croissant Software",
+                "device": "Croissant"
             }
-        });
+        }
+    });
 
-        stream.send(payload.to_string().into());
-    }
+    stream.send(payload.to_string().into());
+}
+
+pub async fn connect(token: &str) -> Result<Websocket_CONNECTED, ()> {
+    let (mut stream, _) = connect_async("wss://gateway.discord.gg/?v=9&encoding=json").await.unwrap();
+        
+    send_idetify(&mut stream, token);
+
+    // check if ready event seneded
+
+    Ok( Websocket_CONNECTED {
+        mutex_stream: Arc::new(Mutex::new( stream ))
+    } )
 }
 
 impl Websocket_CONNECTED {
-    fn send_request(name: &str, state: &str, details: &str, url: &str, r#type: i64, party: String, assets: String, secrets: String) {
-// Example activity {
-//  "details": "24H RL Stream for Charity",
-//  "state": "Rocket League",
-//  "name": "Twitch",
-//  "type": 1,
-//  "url": "https://www.twitch.tv/discord"
-// }
+    pub fn send_request(&self, payload: String, interval: u64) {
+        let mutex_stream = self.mutex_stream.clone();
 
+        task::spawn( async move {
+            loop {
+                tokio::time::sleep( std::time::Duration::from_millis(interval) ).await;
+                mutex_stream.lock().await.send(payload.clone().into());
+            }
+        });
+    }
+
+    fn recconect(&self) {
         todo!()
     }
 
-    fn recconect() {
-        todo!()
-    }
+    fn close_connection(self) {
+    } 
 }
