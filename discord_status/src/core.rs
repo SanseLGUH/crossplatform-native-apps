@@ -58,10 +58,18 @@ pub async fn connect(token: &str) -> Result<Websocket_CONNECTED, ConnectionError
         Some( Ok( tokio_tungstenite::tungstenite::protocol::Message::Close(_) ) ) => return Err( ConnectionError::InvalidAuthorization ),
         Some( Ok( tokio_tungstenite::tungstenite::protocol::Message::Text(utf8) ) ) => {
             println!("{:?}", utf8);
+            // here i need to take resume_url
         },
-        _ => { println!("something went wrong ") }
+        _ => { panic!("something went wrong ") }
     }
     
+    loop {
+        match stream.next().await {
+            Some(d) => println!("{:?}", d),
+            _ => {}
+        }
+    }
+
     let mutex_stream = Arc::new(Mutex::new( stream ));
     
     send_heartbeat(mutex_stream.clone());
@@ -76,21 +84,19 @@ pub struct Websocket_CONNECTED {
 }
 
 impl Websocket_CONNECTED {
-    pub fn send_request(&self, payload: String, interval: u64) {
-        let mutex_stream = self.mutex_stream.clone();
-
-        task::spawn( async move {
-            loop {
-                tokio::time::sleep( std::time::Duration::from_millis(interval) ).await;
-                mutex_stream.lock().await.send(payload.clone().into());
+    pub async fn send_request(&mut self, payload: String, interval: u64) {
+        let mutex_stream = self.mutex_stream.clone();     
+    
+        loop {
+            tokio::time::sleep( std::time::Duration::from_millis(interval) ).await;
+            
+            if let Err(_) = mutex_stream.lock().await.send(payload.clone().into()).await {
+                self.recconect();
             }
-        });
+        }
     }
 
-    fn recconect(&self) {
+    fn recconect(&mut self) {
         todo!()
     }
-
-    fn close_connection(self) {
-    } 
 }
