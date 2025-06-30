@@ -28,6 +28,10 @@ impl DiscordActivityApp {
         // for e.g. egui::PaintCallback.
         Self::default()
     }
+
+    fn start_with_ws(&self) {
+
+    }
 }
 
 impl eframe::App for DiscordActivityApp {
@@ -41,14 +45,13 @@ impl eframe::App for DiscordActivityApp {
             ui.vertical_centered(|ui| {
                 if ui.add( egui::Button::new( if !self.working.is_some() { "START" } else { "STOP" } ).min_size(egui::Vec2::new(20., 20.)) ).clicked() {    
                     if let Some(task) = &self.working {
-                        println!("aborting");
                         task.abort();
                         self.working = None;
                     }
                     
                     else {
                         self.working = Some(tokio::spawn(async move {
-                            let conn = connect("test").await;
+                            let conn = connect("MTE1Mjk4NzY5NDIzMDY3NTQ3Nw.GhwYgeo").await;
                             // Do something with conn
                         }));
                     }
