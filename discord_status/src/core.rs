@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use serde_json::json;
 
-async fn send_idetify(stream: &mut WebSocketStream<MaybeTlsStream<TcpStream>>, token: &str) {
+async fn send_idetify(stream: &mut futures::stream::SplitSink<WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>, tokio_tungstenite::tungstenite::Message>, token: &str) {
     let payload = json!({
         "op": 2,
         "d": {
@@ -20,22 +20,6 @@ async fn send_idetify(stream: &mut WebSocketStream<MaybeTlsStream<TcpStream>>, t
     stream.send(payload.to_string().into()).await;
 }
 
-fn send_heartbeat(mutex_stream: Arc<Mutex< WebSocketStream<MaybeTlsStream<TcpStream>> >>) {
-    let mutex_stream = mutex_stream.clone();
-
-    task::spawn(async move {
-        let payload = json!({
-            "op": 1,
-            "d": 251
-        });
-
-        loop {
-            mutex_stream.lock().await.send(payload.to_string().into()).await;
-            tokio::time::sleep( std::time::Duration::from_millis( 41000 ) );
-        }
-    });
-}
-
 pub enum ConnectionError {
     tungstenite_error( tokio_tungstenite::tungstenite::Error ),
     InvalidAuthorization
@@ -47,52 +31,63 @@ impl From<tokio_tungstenite::tungstenite::Error> for ConnectionError {
     }
 }
 
+// my second mem leak in rust somehow 
 pub async fn connect(token: &str) -> Result<Websocket_CONNECTED, ConnectionError> {
-    let (mut stream, _) = connect_async("wss://gateway.discord.gg/?v=9&encoding=json").await?;
+    let (stream, _) = connect_async("wss://gateway.discord.gg/?v=9&encoding=json").await?;
+    let ( mut write, mut read ) = stream.split();
 
-    stream.next().await;
-
-    send_idetify(&mut stream, token).await;
-
-    match stream.next().await { // need to work here
-        Some( Ok( tokio_tungstenite::tungstenite::protocol::Message::Close(_) ) ) => return Err( ConnectionError::InvalidAuthorization ),
-        Some( Ok( tokio_tungstenite::tungstenite::protocol::Message::Text(utf8) ) ) => {
-            println!("{:?}", utf8);
-            // here i need to take resume_url
-        },
-        _ => { panic!("something went wrong ") }
-    }
+    read.next().await;
     
-    loop {
-        match stream.next().await {
-            Some(d) => println!("{:?}", d),
-            _ => {}
+    // ready event or auth invalid 
+
+    send_idetify(&mut write, token).await;
+    
+    match read.next().await {
+        Some( Ok( tokio_tungstenite::tungstenite::protocol::Message::Text(resp)) ) => {
+            println!("{:?}", resp);
+        }
+        _ => {
+            return Err( ConnectionError::InvalidAuthorization ); 
         }
     }
 
-    let mutex_stream = Arc::new(Mutex::new( stream ));
-    
-    send_heartbeat(mutex_stream.clone());
+    task::spawn( async move { loop {  read.next().await; } });
 
-    Ok( Websocket_CONNECTED {
-        mutex_stream: mutex_stream.clone()
-    } )
+    let arc_mutex_writer = Arc::new( Mutex::new( write ) );
+    
+    let conn = Websocket_CONNECTED {
+        mutex_write: arc_mutex_writer
+    };
+
+    conn.send_heartbeat();
+
+    Ok( conn )
 }
 
 pub struct Websocket_CONNECTED {
-    pub mutex_stream: Arc<Mutex< WebSocketStream<MaybeTlsStream<TcpStream>> >> 
+    pub mutex_write: Arc< Mutex< futures::stream::SplitSink<WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>, tokio_tungstenite::tungstenite::Message> > > 
 }
 
 impl Websocket_CONNECTED {
+    fn send_heartbeat(&self) {
+        let mutex_write = self.mutex_write.clone();
+
+        task::spawn(async move {
+            let payload = json!({
+                "op": 1,
+                "d": 251
+            });
+
+            loop {
+                mutex_write.lock().await.send(payload.to_string().into()).await;
+                tokio::time::sleep( std::time::Duration::from_millis( 41000 ) );
+            }
+        });
+    }
+
     pub async fn send_request(&mut self, payload: String, interval: u64) {
-        let mutex_stream = self.mutex_stream.clone();     
-    
         loop {
             tokio::time::sleep( std::time::Duration::from_millis(interval) ).await;
-            
-            if let Err(_) = mutex_stream.lock().await.send(payload.clone().into()).await {
-                self.recconect();
-            }
         }
     }
 

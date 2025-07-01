@@ -3,18 +3,12 @@ use eframe::egui;
 
 use serde::Serialize;
 
-#[derive(Serialize, Default)]
-pub struct Settings {
-    datails: String,
-    state: String,
-    name: String,
-    r#type: u64,
-    url: String
-}
-
 use tokio::{ task::JoinHandle };
 use std::sync::Arc;
+
 use crossbeam::atomic::AtomicCell;
+
+
 #[derive(Default)]
 pub struct WebsocketBackend {
     task: Option<JoinHandle<()>>, 
@@ -23,6 +17,7 @@ pub struct WebsocketBackend {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConnectionState {
+    Disconnecting,
     Disconnected,
     Connecting,
     Connected,
@@ -33,6 +28,15 @@ impl Default for ConnectionState {
     fn default() -> Self {
         ConnectionState::Disconnected
     }
+}
+
+#[derive(Serialize, Clone,Default)]
+pub struct Settings {
+    datails: String,
+    state: String,
+    name: String,
+    r#type: u64,
+    url: String
 }
 
 #[derive(Default)]
@@ -53,6 +57,40 @@ impl DiscordActivityApp {
         // for e.g. egui::PaintCallback.
         Self::default()
     }
+
+    fn connecting_ws(&mut self) -> Result<(), ()> {
+        let ( token, payload, arc_conn_state ) = (self.token.clone(), self.settings.clone(), self.websocket_backend.connection_state.clone());
+        self.websocket_backend.task = Some( tokio::task::spawn( async move {
+            arc_conn_state.store( ConnectionState::Connecting );
+
+            match connect(&token).await {
+                Ok(mut conn) => { 
+                    arc_conn_state.store( ConnectionState::Connected );
+                    conn.send_request( serde_json::to_string(&payload).unwrap(), 41000).await;
+                },
+                Err(_) => { arc_conn_state.store( ConnectionState::Failed ) }
+            }
+        }) );
+        
+        Ok(())
+    }
+    
+    fn handle_failure(&mut self) -> Result<(), ()> {
+        
+
+        Ok(())
+    }
+
+    fn disconnecting_ws(&mut self) -> Result<(), ()> {
+        if let Some(task) = &self.websocket_backend.task {
+            task.abort();
+            self.websocket_backend.task = None;
+        }
+
+        self.websocket_backend.connection_state.store( ConnectionState::Disconnected );
+
+        Ok(())
+    }
 }
 
 
@@ -68,7 +106,6 @@ impl eframe::App for DiscordActivityApp {
 
                 ui.separator();
 
-                // Settings group
                 ui.group(|ui| {
                     ui.label("📋 Activity Settings");
                     ui.add_space(5.0);
@@ -102,7 +139,6 @@ impl eframe::App for DiscordActivityApp {
 
                 ui.separator();
 
-                // Token + Mode
                 ui.group(|ui| {
                     ui.label("🔐 Discord Token");
                     ui.add_space(5.0);
@@ -126,27 +162,22 @@ impl eframe::App for DiscordActivityApp {
                     ui.horizontal(|ui| {
                         ui.selectable_value(&mut self.offline_mode, true, "Offline Mode");
                         ui.selectable_value(&mut self.offline_mode, false, "WebSocket Mode");
-                        
+                         
                         if ui.add(button).clicked() {
                             if !self.offline_mode {
                                 match conn_state {
-                                    ConnectionState::Connected => {},
+                                    ConnectionState::Connected => {
+                                        self.disconnecting_ws();
+                                    }
                                     ConnectionState::Disconnected => {
-                                        let token = self.token.clone();
-                                        let arc_conn_state = self.websocket_backend.connection_state.clone();
-                                        tokio::task::spawn( async move {
-                                            println!("test");
-                                            match connect(&token).await {
-                                                Ok(_) => { arc_conn_state.store( ConnectionState::Connected ) },
-                                                Err(_) => { arc_conn_state.store( ConnectionState::Failed ) }
-                                            }
-                                        });
-                                    },
+                                        self.connecting_ws();          
+                                    }
+                                    ConnectionState::Failed => {
+                                        self.handle_failure();
+                                    }
                                     _ => {}
                                 }
                             } 
-
-                            // TODO: handle start/stop logic
                         }
                     });
                });
