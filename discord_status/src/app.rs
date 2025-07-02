@@ -1,72 +1,6 @@
-use crate::core::*;
-use eframe::egui;
-
-use serde::Serialize;
-
+use crate::{ websocket::*, structures::* };
 use tokio::{ task::JoinHandle };
-use std::sync::Arc;
-
-use crossbeam::atomic::AtomicCell;
-
-
-#[derive(Default)]
-pub struct WebsocketBackend {
-    task: Option<JoinHandle<()>>, 
-    connection_state: Arc< AtomicCell<ConnectionState> > ,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ConnectionState {
-    Disconnecting,
-    Disconnected,
-    Connecting,
-    Connected,
-    Failed,
-}
-
-impl Default for ConnectionState {
-    fn default() -> Self {
-        ConnectionState::Disconnected
-    }
-}
-
-#[derive(Serialize, Clone)]
-pub struct GatewayEvent {
-    op: u8, 
-    d: GatewayEventData
-}
-
-#[derive(Serialize, Clone)]
-pub struct GatewayEventData {
-    since: u64,
-    activities: Vec< Settings >,
-    status: String,
-    afk: bool
-}
-
-impl GatewayEvent {
-    fn from_settings( settings: Settings ) -> Self {
-        let data = GatewayEventData {
-            since: 91879200,
-            activities: vec![ settings ],
-            status: "online".to_string(),
-            afk: false,
-        };
-
-        GatewayEvent {
-            op: 3,
-            d: data
-        }
-    }
-}
-#[derive(Serialize, Clone,Default)]
-pub struct Settings {
-    details: String,
-    state: String,
-    name: String,
-    r#type: i64,
-    url: String
-}
+use eframe::egui;
 
 #[derive(Default)]
 pub struct DiscordActivityApp {
@@ -76,19 +10,17 @@ pub struct DiscordActivityApp {
     offline_mode: bool
 }
 
-// eframe::run_native("My egui App", native_options, Box::new(|cc| Ok(Box::new(app::MyEguiApp::new(cc)))));
-
 impl DiscordActivityApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        // Customize egui here with cc.egui_ctx.set_fonts and cc.egui_ctx.set_visuals.
-        // Restore app state using cc.storage (requires the "persistence" feature).
-        // Use the cc.gl (a glow::Context) to create graphics shaders and buffers that you can use
-        // for e.g. egui::PaintCallback.
-        Self::default()
+       Self::default()
     }
 
     fn connecting_ws(&mut self) -> Result<(), ()> {
-        let ( token, payload, arc_conn_state ) = (self.token.clone(), GatewayEvent::from_settings(self.settings.clone()), self.websocket_backend.connection_state.clone());
+        let ( token, payload, arc_conn_state ) = (
+            self.token.clone(), 
+            GatewayEvent::from_settings(self.settings.clone()), 
+            self.websocket_backend.connection_state.clone(),
+        );
 
         self.websocket_backend.task = Some( tokio::task::spawn( async move {
             arc_conn_state.store( ConnectionState::Connecting );
@@ -96,7 +28,7 @@ impl DiscordActivityApp {
             match connect(&token).await {
                 Ok(mut conn) => { 
                     arc_conn_state.store( ConnectionState::Connected );
-                    conn.send_request( serde_json::to_string(&payload).unwrap(), 3000).await;
+                    conn.send_request( serde_json::to_string(&payload).unwrap(), 3000);
                 },
                 Err(_) => { arc_conn_state.store( ConnectionState::Failed ) }
             }

@@ -1,5 +1,6 @@
 mod app;
-mod core;
+mod websocket;
+mod structures;
 
 #[tokio::main]
 async fn main() {
@@ -10,4 +11,4 @@ async fn main() {
     eframe::run_native("Discord Custom Activity", native_options, Box::new(|cc| Ok(Box::new(app::DiscordActivityApp::new(cc)))));
 }
 
-
+// handle discconecting, connecting, + more settings
