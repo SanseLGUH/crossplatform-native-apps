@@ -30,12 +30,41 @@ impl Default for ConnectionState {
     }
 }
 
+#[derive(Serialize, Clone)]
+pub struct GatewayEvent {
+    op: u8, 
+    d: GatewayEventData
+}
+
+#[derive(Serialize, Clone)]
+pub struct GatewayEventData {
+    since: u64,
+    activities: Vec< Settings >,
+    status: String,
+    afk: bool
+}
+
+impl GatewayEvent {
+    fn from_settings( settings: Settings ) -> Self {
+        let data = GatewayEventData {
+            since: 91879200,
+            activities: vec![ settings ],
+            status: "online".to_string(),
+            afk: false,
+        };
+
+        GatewayEvent {
+            op: 3,
+            d: data
+        }
+    }
+}
 #[derive(Serialize, Clone,Default)]
 pub struct Settings {
-    datails: String,
+    details: String,
     state: String,
     name: String,
-    r#type: u64,
+    r#type: i64,
     url: String
 }
 
@@ -59,14 +88,15 @@ impl DiscordActivityApp {
     }
 
     fn connecting_ws(&mut self) -> Result<(), ()> {
-        let ( token, payload, arc_conn_state ) = (self.token.clone(), self.settings.clone(), self.websocket_backend.connection_state.clone());
+        let ( token, payload, arc_conn_state ) = (self.token.clone(), GatewayEvent::from_settings(self.settings.clone()), self.websocket_backend.connection_state.clone());
+
         self.websocket_backend.task = Some( tokio::task::spawn( async move {
             arc_conn_state.store( ConnectionState::Connecting );
 
             match connect(&token).await {
                 Ok(mut conn) => { 
                     arc_conn_state.store( ConnectionState::Connected );
-                    conn.send_request( serde_json::to_string(&payload).unwrap(), 41000).await;
+                    conn.send_request( serde_json::to_string(&payload).unwrap(), 3000).await;
                 },
                 Err(_) => { arc_conn_state.store( ConnectionState::Failed ) }
             }
@@ -76,7 +106,7 @@ impl DiscordActivityApp {
     }
     
     fn handle_failure(&mut self) -> Result<(), ()> {
-        
+        self.websocket_backend.connection_state.store( ConnectionState::Disconnected );        
 
         Ok(())
     }
@@ -116,6 +146,11 @@ impl eframe::App for DiscordActivityApp {
                     });
 
                     ui.horizontal(|ui| {
+                        ui.label("Details:");
+                        ui.add(egui::TextEdit::singleline(&mut self.settings.details).hint_text("Status or detail").desired_width(200.0));
+                    });
+
+                    ui.horizontal(|ui| {
                         ui.label("State:");
                         ui.add(egui::TextEdit::singleline(&mut self.settings.state).hint_text("Status or detail").desired_width(200.0));
                     });
@@ -127,7 +162,7 @@ impl eframe::App for DiscordActivityApp {
 
                     ui.horizontal(|ui| {
                         ui.label("Type:");
-                        ui.add(egui::DragValue::new(&mut self.settings.r#type).clamp_range(0..=5).speed(1.0));
+                        ui.add(egui::DragValue::new(&mut self.settings.r#type).clamp_range(-1..=5).speed(0.3));
                         ui.label("(0: Playing, 1: Streaming, etc.)").on_hover_text("Refer to Discord activity types");
                     });
 

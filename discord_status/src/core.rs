@@ -86,9 +86,13 @@ impl Websocket_CONNECTED {
     }
 
     pub async fn send_request(&mut self, payload: String, interval: u64) {
-        loop {
-            tokio::time::sleep( std::time::Duration::from_millis(interval) ).await;
-        }
+        let mutex_write = self.mutex_write.clone();
+        task::spawn( async move { 
+            loop {
+                mutex_write.lock().await.send( payload.clone().into() ).await;
+                tokio::time::sleep( std::time::Duration::from_millis( interval ) );
+            }   
+        });
     }
 
     fn recconect(&mut self) {
