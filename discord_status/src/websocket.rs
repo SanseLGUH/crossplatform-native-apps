@@ -80,6 +80,8 @@ pub struct WebSocket_Connected {
     pub threads: WebsocketThreads
 }
 
+use crate::structures::*;
+
 impl WebSocket_Connected {
     fn send_heartbeat(&mut self) {
         let mutex_write = self.mutex_write.clone();
@@ -114,7 +116,9 @@ impl WebSocket_Connected {
     pub fn disconnect(&mut self) {
         let mutex_write = self.mutex_write.clone();
      
-        task::spawn(async move { mutex_write.lock().await.close(); });
+        task::spawn(async move { 
+            mutex_write.lock().await.close().await; 
+        });
 
         if let ( Some(reader), Some(heartbeat) ) = ( &self.threads.reader, &self.threads.heartbeat ) {
             reader.abort();

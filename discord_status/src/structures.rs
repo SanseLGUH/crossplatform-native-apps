@@ -55,6 +55,20 @@ impl GatewayEvent {
             d: data,
         }
     }
+
+    pub fn without_activities() -> Self {
+        let data = GatewayEventData {
+            since: 4234093,
+            activities: Vec::new(),
+            status: "online".to_string(),
+            afk: false
+        };
+
+        GatewayEvent {
+            op: 3,
+            d: data
+        }
+    }
 }
 
 #[derive(Serialize, Clone, Default)]
