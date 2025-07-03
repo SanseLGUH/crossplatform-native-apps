@@ -3,15 +3,14 @@ use serde::Serialize;
 use std::{ sync::Arc, sync::Mutex };
 use tokio::{ task::JoinHandle };
 
-use crate::websocket::Websocket_CONNECTED;
+use crate::websocket::WebSocket_Connected;
 
 #[derive(Default)]
 pub struct WebsocketBackend {
     pub task: Option<JoinHandle<()>>, 
-    pub websocket: Option< Websocket_CONNECTED > ,
+    pub websocket: Option< WebSocket_Connected > ,
     pub connection_state: Arc<AtomicCell<ConnectionState>>,
 }
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConnectionState {

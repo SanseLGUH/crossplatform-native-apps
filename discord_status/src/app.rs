@@ -21,7 +21,7 @@ impl DiscordActivityApp {
             GatewayEvent::from_settings(self.settings.clone()), 
             self.websocket_backend.connection_state.clone(),
         );
-
+        // here i need to use one_shot to return struct websocket connected 
         self.websocket_backend.task = Some( tokio::task::spawn( async move {
             arc_conn_state.store( ConnectionState::Connecting );
 
@@ -38,16 +38,26 @@ impl DiscordActivityApp {
     }
     
     fn handle_failure(&mut self) -> Result<(), ()> {
-        self.websocket_backend.connection_state.store( ConnectionState::Disconnected );        
+        let conn_state = self.websocket_backend.connection_state.clone();
+        
+        tokio::task::spawn( async move {
+            tokio::time::sleep( std::time::Duration::from_millis( 3000 ) ).await;
+            conn_state.store( ConnectionState::Disconnected );
+        } );
 
+        self.token.clear();
         Ok(())
     }
 
     fn disconnecting_ws(&mut self) -> Result<(), ()> {
         if let Some(task) = &self.websocket_backend.task {
             task.abort();
-            self.websocket_backend.task = None;
         }
+        
+        if let Some(ws) = &mut self.websocket_backend.websocket {
+            ws.disconnect();
+            self.websocket_backend.websocket = None;
+        }     
 
         self.websocket_backend.connection_state.store( ConnectionState::Disconnected );
 
@@ -60,6 +70,10 @@ impl eframe::App for DiscordActivityApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
             let conn_state = self.websocket_backend.connection_state.load();
+
+            if conn_state == ConnectionState::Failed {
+                self.handle_failure();
+            }
 
             ui.vertical_centered(|ui| {
                 ui.heading("🎮 Discord Custom Activity");
@@ -120,8 +134,9 @@ impl eframe::App for DiscordActivityApp {
                 });
 
                 ui.add_space(10.0);
-
+                
                 // Mode toggle and start/stop
+                
                 ui.group(|ui| {
                     let btn_label = if conn_state == ConnectionState::Connected { "⏹ Stop" } else { "▶ Start" };
                     let button = egui::Button::new(btn_label).min_size(egui::Vec2::new(65.0, 15.0));
@@ -138,9 +153,6 @@ impl eframe::App for DiscordActivityApp {
                                     }
                                     ConnectionState::Disconnected => {
                                         self.connecting_ws();          
-                                    }
-                                    ConnectionState::Failed => {
-                                        self.handle_failure();
                                     }
                                     _ => {}
                                 }

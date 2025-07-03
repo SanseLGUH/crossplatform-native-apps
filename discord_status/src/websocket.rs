@@ -1,11 +1,11 @@
 use tokio_tungstenite::{ WebSocketStream, MaybeTlsStream, connect_async, tungstenite::Message };
 use futures::{SinkExt, StreamExt};
-use tokio::{ sync::Mutex, task, net::TcpStream };
+use tokio::{ sync::Mutex, task::{ self, JoinHandle }, net::TcpStream };
 use std::sync::Arc;
 
 use serde_json::json;
 
-async fn send_idetify(stream: &mut futures::stream::SplitSink<WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>, tokio_tungstenite::tungstenite::Message>, token: &str) {
+async fn send_identify(stream: &mut futures::stream::SplitSink<WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>, tokio_tungstenite::tungstenite::Message>, token: &str) {
     let payload = json!({
         "op": 2,
         "d": {
@@ -21,27 +21,27 @@ async fn send_idetify(stream: &mut futures::stream::SplitSink<WebSocketStream<to
 }
 
 pub enum ConnectionError {
-    tungstenite_error( tokio_tungstenite::tungstenite::Error ),
+    tungstenite( tokio_tungstenite::tungstenite::Error ),
     InvalidAuthorization
 }
 
 impl From<tokio_tungstenite::tungstenite::Error> for ConnectionError {
     fn from(err: tokio_tungstenite::tungstenite::Error) -> Self {
-        ConnectionError::tungstenite_error( err )
+        ConnectionError::tungstenite( err )
     }
 }
 
 // my second mem leak in rust somehow 
-pub async fn connect(token: &str) -> Result<Websocket_CONNECTED, ConnectionError> {
+pub async fn connect(token: &str) -> Result<WebSocket_Connected, ConnectionError> {
     let (stream, _) = connect_async("wss://gateway.discord.gg/?v=9&encoding=json").await?;
     let ( mut write, mut read ) = stream.split();
 
     read.next().await;
     
     // ready event or auth invalid 
+    send_identify(&mut write, token).await;
 
-    send_idetify(&mut write, token).await;
-    
+    // handle ready
     match read.next().await {
         Some( Ok( tokio_tungstenite::tungstenite::protocol::Message::Text(resp)) ) => {
             println!("{:?}", resp);
@@ -51,12 +51,16 @@ pub async fn connect(token: &str) -> Result<Websocket_CONNECTED, ConnectionError
         }
     }
 
-    task::spawn( async move { loop {  read.next().await; } });
+    let websocket_threads = WebsocketThreads {
+        reader: Some( task::spawn( async move { loop {  read.next().await; } }) ),
+        ..Default::default()
+    };
 
     let arc_mutex_writer = Arc::new( Mutex::new( write ) );
     
-    let conn = Websocket_CONNECTED {
-        mutex_write: arc_mutex_writer
+    let mut conn = WebSocket_Connected {
+        mutex_write: arc_mutex_writer,
+        threads: websocket_threads
     };
 
     conn.send_heartbeat();
@@ -64,15 +68,23 @@ pub async fn connect(token: &str) -> Result<Websocket_CONNECTED, ConnectionError
     Ok( conn )
 }
 
-pub struct Websocket_CONNECTED {
-    pub mutex_write: Arc< Mutex< futures::stream::SplitSink<WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>, tokio_tungstenite::tungstenite::Message> > > 
+#[derive(Default)]
+pub struct WebsocketThreads {
+    heartbeat: Option<JoinHandle<()> >,
+    reader: Option<JoinHandle<()> >,
+    request: Option<JoinHandle<()> >,
 }
 
-impl Websocket_CONNECTED {
-    fn send_heartbeat(&self) {
+pub struct WebSocket_Connected {
+    pub mutex_write: Arc< Mutex< futures::stream::SplitSink<WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>, tokio_tungstenite::tungstenite::Message> > >, 
+    pub threads: WebsocketThreads
+}
+
+impl WebSocket_Connected {
+    fn send_heartbeat(&mut self) {
         let mutex_write = self.mutex_write.clone();
 
-        task::spawn(async move {
+        self.threads.heartbeat = Some( task::spawn(async move {
             let payload = json!({
                 "op": 1,
                 "d": 251
@@ -80,27 +92,38 @@ impl Websocket_CONNECTED {
 
             loop {
                 mutex_write.lock().await.send(payload.to_string().into()).await;
-                tokio::time::sleep( std::time::Duration::from_millis( 41000 ) );
+                tokio::time::sleep( std::time::Duration::from_millis( 41000 ) ).await;
             }
-        });
+        }) );
     }
 
     pub fn send_request(&mut self, payload: String, interval: u64) {
         let mutex_write = self.mutex_write.clone();
-        task::spawn( async move { 
+        self.threads.request = Some( task::spawn( async move { 
             loop {
                 mutex_write.lock().await.send( payload.clone().into() ).await;
-                tokio::time::sleep( std::time::Duration::from_millis( interval ) );
+                tokio::time::sleep( std::time::Duration::from_millis( interval ) ).await;
             }   
-        });
+        }) );
     }
 
     fn recconect(&mut self) {
         todo!()
     }
 
-    fn disconnect(mut self) {
+    pub fn disconnect(&mut self) {
         let mutex_write = self.mutex_write.clone();
+     
         task::spawn(async move { mutex_write.lock().await.close(); });
+
+        if let ( Some(reader), Some(heartbeat) ) = ( &self.threads.reader, &self.threads.heartbeat ) {
+            reader.abort();
+            heartbeat.abort();
+        }
+
+        if let Some(request) = &self.threads.request {
+            request.abort();
+        }
+
     } 
 }
