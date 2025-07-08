@@ -11,4 +11,4 @@ async fn main() {
     eframe::run_native("Discord Custom Activity", native_options, Box::new(|cc| Ok(Box::new(app::DiscordActivityApp::new(cc)))));
 }
 
-// handle discconecting, connecting, + more settings
+// fix handle failure input ( timer ), fix default if inputs ar empty, add more settings

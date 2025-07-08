@@ -13,16 +13,6 @@ pub struct DiscordActivityApp {
     offline_mode: bool
 }
 
-#[derive(Serialize, Clone)]
-pub struct Settings {
-    pub details: String,
-    pub state: String,
-    pub name: String,
-    pub r#type: i64,
-    pub url: String,
-}
-
-
 impl DiscordActivityApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
        Self::default()
