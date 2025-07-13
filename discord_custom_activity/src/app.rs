@@ -19,9 +19,9 @@ impl DiscordActivityApp {
     }
 
     fn connecting_ws(&mut self) -> Result<(), ()> {
-        if self.settings.url.trim() == "" {
-            return Err(());
-        }
+        // if self.settings.url.trim() == "" {
+        //     return Err(());
+        // }
 
         let ( token, payload, arc_conn_state ) = (
             self.token.clone(), 
