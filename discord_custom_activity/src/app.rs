@@ -1,6 +1,6 @@
 use eframe::egui;
 
-use crossbeam_channel::ubounded;
+use crossbeam_channel::unbounded;
 
 use tokio::{ 
     task::{ self, JoinHandle }, 
@@ -11,8 +11,8 @@ use timer;
 use chrono;
 
 use crate::{
-    error::Result, 
-    websocket::*, structures::*
+    error::{WebResult, ConnectionError}, 
+    websocket, settings::*
 }; 
 
 #[derive(Default)]
@@ -24,85 +24,64 @@ pub struct DiscordActivityApp {
     offline_mode: bool
 }
 
-
-
 impl DiscordActivityApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
        Self::default()
     }
 
-    fn connecting_ws(&mut self) -> Result<()> {
-        let ( token, payload, arc_conn_state ) = (
-            self.token.clone(), 
-            GatewayEvent::from_settings(self.settings.clone()), 
-            self.websocket_backend.connection_state.clone(),
-        );
-        
-        let ( tx, mut rx ) = oneshot::channel::<Client>();
+    fn connecting_ws(&mut self) -> WebResult<()> {
+        let app_state = self.websocket_backend.connection_state.clone();
+        let (s, r) = unbounded::<WebResult<websocket::Client>>();
 
-        self.websocket_backend.task = Some( tokio::task::spawn( async move {
-            arc_conn_state.store( ConnectionState::Connecting );
+        task::spawn( async move {
+            app_state.store( ConnectionState::Connecting );
 
-            match connect(&token).await {
-                Ok(mut conn) => { 
-                    arc_conn_state.store( ConnectionState::Connected );
-                    conn.send_request( serde_json::to_string(&payload).unwrap(), 3000);
-                    tx.send(conn);
-                },
-                Err(_) => { arc_conn_state.store( ConnectionState::Failed ) }
-            }
-        }) );
-        
-        loop {
-            if matches!(
-                self.websocket_backend.connection_state.load(),
-                ConnectionState::Failed | ConnectionState::Disconnected
-            ) {
-                break;
+            let client = websocket::connect("token").await;
+
+            match client {
+                Ok(con) => {
+                    
+                }
+                Err(e) => {
+                    
+                }
             }
 
-            std::thread::sleep( std::time::Duration::from_millis( 1000 ) );
-            
-            match rx.try_recv() {   
-                Ok(msg) => { 
-                    self.websocket_backend.websocket = Some( msg ); 
-                    break; 
-                },
-                _ => {}
-            }
-        }
-        
+            s.send(
+                websocket::connect("token").await
+            );
+
+            app_state.store( ConnectionState::Connected )
+        });
+
+        // loop {
+        //     if let Ok(resp) = r.try_recv() {
+        //         println!("{:?}", resp);
+
+        //         match resp {
+        //             Ok(r) => {
+
+
+        //                 return Ok(());
+        //             },
+        //             Err(e) => return Err( e )
+        //         }
+
+
+        //     }
+        // }
+
+
+
         Ok(())
     }
 
-    fn handle_failure(&mut self) -> Result<()> {
-        let conn_state = self.websocket_backend.connection_state.clone(); 
-        
-        if self.failure_handling == true {
-            return Err(());
-        }
-
-        self.failure_handling = true; 
-
-        task::spawn_blocking( move || {
-            let (tx, rx) = channel();
-            let timer = timer::Timer::new();
-
-            timer.schedule_with_delay(chrono::Duration::seconds(3), move || {
-                tx.send(()).unwrap();
-            });
-
-            if let Ok(_) = rx.recv() {;
-                conn_state.store( ConnectionState::Disconnected );
-            }
-        });
-
-        self.token.clear();
+    fn handle_failure(&mut self) -> WebResult<()> {
     
         Ok(())
     }
 
-    fn disconnecting_ws(&mut self) -> Result<(), ()> {
+    fn disconnecting_ws(&mut self) -> WebResult<()> {
         if let Some(task) = &self.websocket_backend.task {
             task.abort();
         }

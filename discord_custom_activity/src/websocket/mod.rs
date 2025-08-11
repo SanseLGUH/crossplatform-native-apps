@@ -2,7 +2,12 @@ pub mod structures;
 
 use crossbeam_channel::unbounded;
 
-use crate::structures::*;
+use crate::{
+    websocket::structures::*, 
+    error::{
+        WebResult, ConnectionError
+    }
+};
 
 use tokio_tungstenite::{ 
     WebSocketStream, 
@@ -22,10 +27,10 @@ use tokio::{
     net::TcpStream 
 };
 
-use std::sync::Arc;
-
 use serde_json::json;
 
+use std::sync::Arc;
+use futures::stream::{SplitStream, SplitSink};
 pub type WebSocket = WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>;
 pub type WebSocketSender = SplitSink<WebSocket, Message>;
 pub type SharedSender = Arc<Mutex<WebSocketSender>>;
@@ -47,7 +52,7 @@ async fn send_identify(stream: &mut WebSocketSender, token: &str) {
 }
 
 // my second mem leak in rust somehow 
-pub async fn connect(token: &str) -> Result<Client, ConnectionError> {
+pub async fn connect(token: &str) -> WebResult<Client> {
     let (stream, _) = connect_async("wss://gateway.discord.gg/?v=9&encoding=json").await?;
     let ( mut write, mut read ) = stream.split();
 
@@ -73,7 +78,7 @@ pub async fn connect(token: &str) -> Result<Client, ConnectionError> {
 
     let arc_mutex_writer = Arc::new( Mutex::new( write ) );
     
-    let mut conn = WebSocket_Connected {
+    let mut conn = Client {
         token: token.to_string(),
         mutex_write: arc_mutex_writer,
         threads: websocket_threads
@@ -84,13 +89,14 @@ pub async fn connect(token: &str) -> Result<Client, ConnectionError> {
     Ok( conn )
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct WebsocketThreads {
     heartbeat: Option<JoinHandle<()> >,
     reader: Option<JoinHandle<()> >,
     request: Option<JoinHandle<()> >,
 }
 
+#[derive(Debug)]
 pub struct Client {
     pub token: String,
     pub mutex_write: SharedSender, 
@@ -124,7 +130,7 @@ impl Client {
         }) );
     }
 
-    async fn recconect(&mut self) -> Result<(), ConnectionError> {
+    async fn recconect(&mut self) -> WebResult<()> {
         self.disconnect();
 
         let (stream, _) = connect_async("wss://gateway.discord.gg/?v=9&encoding=json").await?;
@@ -152,7 +158,7 @@ impl Client {
 
         let arc_mutex_writer = Arc::new( Mutex::new( write ) );
 
-        let mut conn = WebSocket_Connected {
+        let mut conn = Client {
             token: self.token.to_string(),
             mutex_write: arc_mutex_writer,
             threads: websocket_threads
@@ -179,6 +185,5 @@ impl Client {
         if let Some(request) = &self.threads.request {
             request.abort();
         }
-
     } 
 }

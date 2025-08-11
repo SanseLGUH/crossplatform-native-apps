@@ -5,26 +5,7 @@ use serde::Serialize;
 use std::{ sync::Arc, sync::Mutex };
 use tokio::task::JoinHandle;
 
-use crate::websocket::WebSocket_Connected;
-
-#[derive(Default)]
-pub struct WebsocketBackend {
-    pub task: Option<JoinHandle<()>>, 
-    pub websocket: Option< WebSocket_Connected > ,
-    pub connection_state: Arc<AtomicCell<ConnectionState>>,
-}
-
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ConnectionState {
-    Disconnecting,
-    
-    #[default]
-    Disconnected,
-
-    Connecting,
-    Connected,
-    Failed,
-}
+use crate::settings::Settings;
 
 #[derive(Serialize, Clone)]
 pub struct GatewayEvent {
@@ -68,25 +49,6 @@ impl GatewayEvent {
             d: data
         }
     }
-}
-
-#[derive(SmartDefault, Serialize, Clone)]
-pub struct Settings {
-    #[default = "Rust / tokio-tungstenite / eframe"]
-    pub details: String,
-
-    pub application_id: Option< String >,
-
-    #[default = "ver 1.0"]
-    pub state: String,
-
-    #[default = "Custom discord activity"]
-    pub name: String,
-
-    pub r#type: i64,
-    
-    #[default = "https://github.com/SanseLGUH"]
-    pub url: String,
 }
 
 pub struct Timestamps {

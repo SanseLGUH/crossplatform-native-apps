@@ -1,6 +1,7 @@
 mod app;
 mod websocket;
-mod structures;
+mod settings;
+mod error;
 
 #[tokio::main]
 async fn main() {
