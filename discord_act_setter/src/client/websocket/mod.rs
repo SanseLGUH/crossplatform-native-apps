@@ -15,10 +15,11 @@ use crate::{
 
 use crate::client::websocket::types::AtomicState;
 
+use std::sync::Arc;
+
 use tokio::{ 
     sync::Mutex, 
-    task::{ self, JoinHandle }, 
-    net::TcpStream 
+    task::{ self, JoinHandle }
 };
 
 use tokio_tungstenite::connect_async;
@@ -29,11 +30,21 @@ pub struct WebClient {
 }
 
 impl WebClient {
-    pub async fn connect(token: &str, web_state: AtomicState) -> WebResult<Self> {
-        let (stream, _) = connect_async("wss://gateway.discord.gg/?v=9&encoding=json").await?;
+    pub async fn connect(token: &str, web_state: AtomicState, gateway_url: &str) -> WebResult<Self> {
+        let (stream, _) = connect_async(gateway_url).await?;
         let ( mut write, mut read ) = stream.split();
 
-        Err( ConnectionError::InvalidAuthorization )
+        let shared_write = Arc::new( Mutex::new( write ) );
+
+        let write_client = WriteClient::new( shared_write, token ).await;
+        let read_client = ReadClient::new( read, web_state ).await?;
+
+        Ok( 
+            WebClient { 
+                read: read_client, 
+                write: write_client 
+            } 
+        )
     }
 
     pub fn disconnect(&mut self) -> WebResult<()> {
@@ -44,8 +55,10 @@ impl WebClient {
     }
 
     async fn reconnect(&mut self) -> WebResult<()> {
-        *self = Self::connect("something", self.read.state.clone()).await?;
+        let gateway_url = self.read.websocket_data.lock().await.gateway_url.clone();
 
-        Ok(())
+        *self = Self::connect(&self.write.token, self.read.state.clone(), &gateway_url).await?;
+
+        todo!()
     }
 }

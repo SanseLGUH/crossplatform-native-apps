@@ -46,5 +46,4 @@ pub fn conerr_to_errocu(e: ConnectionError) -> ConnectionErrorOccured {
     }
 }
 
-pub type NonSharedAtomicState = AtomicCell<WebSocketState>;
 pub type AtomicState = Arc<AtomicCell<WebSocketState>>;

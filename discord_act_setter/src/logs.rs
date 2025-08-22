@@ -29,7 +29,7 @@ impl Layout {
                 self.label = "Waiting for data from WebSocket...".to_string();
             }
             WebSocketState::ConnectionError(e) => {
-                self.label = format!("Connection failure: [ {:?} ]", e);
+                self.label = format!("Connection failure: {:?}", e);
             }
         }
     }

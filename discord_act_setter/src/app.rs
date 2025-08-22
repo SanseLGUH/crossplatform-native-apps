@@ -5,15 +5,22 @@ use tokio::{
     sync::oneshot 
 };
 
+use serde_json::to_string;
+
 use smart_default::SmartDefault;
 
 use crate::{
-    client::{ SyncClient, websocket::types::{AtomicState, WebSocketState} }, logs, settings::*
+    client::{ SyncClient, 
+        websocket::{ 
+            structures::GatewayEvent, types::{AtomicState, WebSocketState} } 
+        }, 
+        logs, settings::*
 }; 
 
 #[derive(SmartDefault)]
 pub struct DiscordActivityApp {
     token: String,
+    sync_client: Option<SyncClient>,
     app_state: AtomicState,
     settings: Settings,
     logs: logs::Layout,
@@ -26,11 +33,20 @@ impl DiscordActivityApp {
     }
 
     fn run_sync_client(&mut self) {
-        SyncClient::new(self.app_state.clone()).unwrap();
+        let client = SyncClient::new(self.app_state.clone(), &self.token);
+        
+        client.send_request( 
+            to_string( &GatewayEvent::from_settings(self.settings.clone())).unwrap()
+        );
+
     }
 
-    fn handle_failure(&mut self) {
-        // Ok(())
+    fn disconnect(&mut self) {
+        if let Some(client) = &self.sync_client {
+            client.disconnect();
+        }
+
+        self.app_state.store( WebSocketState::Disconnected );
     }
 }
 
@@ -124,7 +140,7 @@ impl eframe::App for DiscordActivityApp {
                             if !self.offline_mode {
                                 match conn_state {
                                     WebSocketState::Connected => {
-                                        // self.disconnecting_ws();
+                                        self.disconnect();
                                     }
                                     WebSocketState::Disconnected => {
                                         self.run_sync_client();          

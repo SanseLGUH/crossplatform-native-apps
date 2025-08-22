@@ -1,12 +1,17 @@
-use crate::client::websocket::types::{WebSocketSender, SharedSender};
-use crate::client::websocket::error::WebResult;
+use crate::client::websocket::{
+    types::{
+        WebSocketSender, SharedSender
+    }, structures::GatewayEvent    
+};
 
+use tokio::task::{ 
+    self, JoinHandle
+};
 use futures::SinkExt;
-use tokio::task::{ self, JoinHandle};
-
+use std::sync::{ Arc, atomic::{AtomicU64, Ordering} };
 use serde_json::json;
 
-async fn send_identify(stream: &mut WebSocketSender, token: &str) {
+async fn send_identify(stream: &SharedSender, token: &str) {
     let payload = json!({
         "op": 2,
         "d": {
@@ -18,7 +23,7 @@ async fn send_identify(stream: &mut WebSocketSender, token: &str) {
         }
     });
 
-    stream.send(
+    stream.lock().await.send(
         payload.to_string().into()
     ).await;
 }
@@ -37,12 +42,26 @@ pub struct Client {
 }
 
 impl Client {
-    fn new( write: SharedSender, token: &str ) -> Self {
-        todo!()
+    pub async fn new( write: SharedSender, token: &str ) -> Self {
+        send_identify( &write, token ).await;
+
+        let threads = WebsocketThreads {
+            heartbeat: None,
+            request: None
+        };
+
+        let mut client = Client {
+            token: token.to_string(),
+            shared_write: write.clone(),
+            threads: threads  
+        };
+
+        client
     }
 
-    fn send_heartbeat(&mut self) {
+    fn send_heartbeat(&mut self, interval: Arc<AtomicU64>) {
         let shared_write = self.shared_write.clone();
+        let interval = interval.load(Ordering::Relaxed);
 
         self.threads.heartbeat = Some( task::spawn(async move {
             let payload = json!({
@@ -62,29 +81,28 @@ impl Client {
         
         self.threads.request = Some( task::spawn( async move { 
             loop {
-                println!("{:?}", payload.clone());
                 shared_write.lock().await.send( payload.clone().into() ).await;
-
                 tokio::time::sleep( std::time::Duration::from_millis( interval ) ).await;
-            }   
+            }
         }) );
     }
 
     pub fn disconnect(&mut self) {
-        // let shared_write = self.shared_write.clone();
+        let shared_write = self.shared_write.clone();
      
-        // task::spawn(async move {
-        //     shared_write.lock().await.send( serde_json::to_string( &GatewayEvent::without_activities() ).unwrap().into() ).await; 
-        //     shared_write.lock().await.close().await;
-        // });
+        task::spawn(async move {
+            let mut shared_write = shared_write.lock().await;
 
-        // if let Some(heartbeat) = &self.threads.heartbeat {
-        //     // reader.abort();
-        //     heartbeat.abort();
-        // }
+            shared_write.send( serde_json::to_string( &GatewayEvent::without_activities() ).unwrap().into() ).await; 
+            shared_write.close().await;
+        });
 
-        // if let Some(request) = &self.threads.request {
-        //     request.abort();
-        // }
+        if let Some(heartbeat) = &self.threads.heartbeat {
+            heartbeat.abort();
+        }
+
+        if let Some(request) = &self.threads.request {
+            request.abort();
+        }
     } 
 }

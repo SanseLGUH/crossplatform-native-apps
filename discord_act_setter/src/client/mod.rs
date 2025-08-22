@@ -11,7 +11,6 @@ use crate::{
 enum SyncCommands {
 	Send(String),
 	Disconnect,
-	Todo
 }
 
 pub struct SyncClient {
@@ -19,10 +18,11 @@ pub struct SyncClient {
 }
 
 impl SyncClient {
-	pub fn new(web_state: AtomicState) -> WebResult<Self> {
+	pub fn new(web_state: AtomicState, token: &str) -> Self {
 		let (tx, rx): (Sender<SyncCommands>, Receiver<SyncCommands>) = bounded(2);
 
 		let atomic_state_clone = web_state.clone();
+		let token = token.to_string();
 
 	    std::thread::spawn( move || {
 	        let rt = runtime::Builder::new_multi_thread()
@@ -31,50 +31,46 @@ impl SyncClient {
 	            .build()
 	            .unwrap();
 
-	        rt.block_on(async {
-	        	match WebClient::connect("todo", atomic_state_clone.clone()).await {
+	        rt.block_on(async {	        	
+	        	match WebClient::connect(&token, atomic_state_clone, "wss://gateway.discord.gg/?v=9&encoding=json").await {
 	        		Ok(mut async_client) => {
+			        	
+	        			web_state.store( WebSocketState::Connected );
+
 			        	loop {
 				        	match rx.recv() {
 				        		Ok(message) => {
 				        			match message {
 				        				SyncCommands::Send(payload) => {
-				        					// async_client.write.send_request(payload, 1000);
+				        					async_client.write.send_request(payload, 1000);
 				        				}
 				        				SyncCommands::Disconnect => {
-				        					// async_client.disconnect().unwrap();
-				        				}
-				        				SyncCommands::Todo => {
-				        					println!("todo");
+				        					async_client.disconnect();
 				        				}
 				        			}
 
 				        		}
-				        		Err(e) => { println!("{}", e); }
+				        		Err(e) => {}
 				        	}	        		
 			        	}
 	        		}
 	        		Err(e) => {
-	        			atomic_state_clone.store( WebSocketState::ConnectionError( conerr_to_errocu(e) ) );
+	        			web_state.store( WebSocketState::ConnectionError( conerr_to_errocu(e) ) );
 	        		}
 	        	}
 	        });
 	    });
 
-	    tx.send( SyncCommands::Todo );
-
-		Ok( Self { sender: tx } )	
+		Self { 
+			sender: tx 
+		}
 	}
 
-	fn send_request(&self) -> WebResult<()> {
-		Ok(())
+	pub fn send_request(&self, payload: String) {
+		self.sender.send( SyncCommands::Send(payload) );
 	}
 
-	fn disconnect(&self) -> WebResult<()> {
-		Ok(())
-	}
-
-	fn get_state(&self) -> WebResult<()> {
-		Ok(())
+	pub fn disconnect(&self) {
+		self.sender.send( SyncCommands::Disconnect );
 	}
 }
