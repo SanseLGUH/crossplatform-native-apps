@@ -19,7 +19,7 @@ pub struct SyncClient {
 
 impl SyncClient {
 	pub fn new(web_state: AtomicState, token: &str) -> Self {
-		let (tx, rx): (Sender<SyncCommands>, Receiver<SyncCommands>) = bounded(2);
+		let (tx, rx): (Sender<SyncCommands>, Receiver<SyncCommands>) = bounded(3);
 
 		let atomic_state_clone = web_state.clone();
 		let token = token.to_string();
@@ -31,7 +31,10 @@ impl SyncClient {
 	            .build()
 	            .unwrap();
 
-	        rt.block_on(async {	        	
+	        rt.block_on(async {
+
+	        	web_state.store( WebSocketState::Connecting );
+
 	        	match WebClient::connect(&token, atomic_state_clone, "wss://gateway.discord.gg/?v=9&encoding=json").await {
 	        		Ok(mut async_client) => {
 			        	
@@ -42,15 +45,17 @@ impl SyncClient {
 				        		Ok(message) => {
 				        			match message {
 				        				SyncCommands::Send(payload) => {
-				        					async_client.write.send_request(payload, 1000);
+				        					async_client.write.send_request(payload, 100000);
 				        				}
 				        				SyncCommands::Disconnect => {
-				        					async_client.disconnect();
+				        					async_client.disconnect().await;
+
+				        					break;
 				        				}
 				        			}
 
 				        		}
-				        		Err(e) => {}
+				        		Err(e) => { println!("{e}"); }
 				        	}	        		
 			        	}
 	        		}

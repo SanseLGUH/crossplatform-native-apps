@@ -87,15 +87,14 @@ impl Client {
         }) );
     }
 
-    pub fn disconnect(&mut self) {
-        let shared_write = self.shared_write.clone();
-     
-        task::spawn(async move {
-            let mut shared_write = shared_write.lock().await;
+    pub async fn disconnect(&mut self) {
+        let mut shared_write = self.shared_write.lock().await;
 
-            shared_write.send( serde_json::to_string( &GatewayEvent::without_activities() ).unwrap().into() ).await; 
-            shared_write.close().await;
-        });
+        shared_write.send(
+            serde_json::to_string(&GatewayEvent::without_activities()).unwrap().into()
+        ).await;
+
+        shared_write.close().await;
 
         if let Some(heartbeat) = &self.threads.heartbeat {
             heartbeat.abort();
@@ -104,5 +103,5 @@ impl Client {
         if let Some(request) = &self.threads.request {
             request.abort();
         }
-    } 
+    }
 }

@@ -1,15 +1,19 @@
 use crate::client::websocket::{types::{WebsocketReader, AtomicState}, error::{WebResult, ConnectionError}};
-
 use tokio_tungstenite::tungstenite::protocol::Message;
 
 use futures::StreamExt;
-use tokio::{sync::Mutex, task::JoinHandle};
-
+use tokio::{task, sync::Mutex, task::JoinHandle};
 use std::sync::Arc;
 
-use tokio::task;
-
 use smart_default::SmartDefault;
+
+struct Hello {
+	heartbeat_interval: u64
+}
+
+struct Ready {
+	gateway_url: String
+}
 
 #[derive(SmartDefault)]
 pub struct WebsocketData {

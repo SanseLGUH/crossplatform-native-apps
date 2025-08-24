@@ -9,7 +9,7 @@ pub struct Layout {
 Please enter your Discord token."]
 	pub label: String,
 
-	#[default(_code = "Color32::from_gray(10)")]
+	#[default(_code = "Color32::RED")]
 	pub color: Color32,
 }
 
@@ -17,12 +17,15 @@ impl Layout {
     pub fn update(&mut self, state: &WebSocketState) {
         match state {
             WebSocketState::Connected => {
+                self.color = Color32::GREEN;
                 self.label = "WebSocket is connected.".to_string();
             }
             WebSocketState::Connecting => {
+                self.color = Color32::ORANGE;
                 self.label = "WebSocket is connecting...".to_string();
             }
             WebSocketState::Disconnected => {
+                self.color = Color32::RED;
                 self.label = "WebSocket is disconnected.".to_string();
             }
             WebSocketState::WaitingForData => {

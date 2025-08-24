@@ -47,8 +47,8 @@ impl WebClient {
         )
     }
 
-    pub fn disconnect(&mut self) -> WebResult<()> {
-        self.write.disconnect();
+    pub async fn disconnect(&mut self) -> WebResult<()> {
+        self.write.disconnect().await;
         self.read.disconnect();
 
         Ok(())

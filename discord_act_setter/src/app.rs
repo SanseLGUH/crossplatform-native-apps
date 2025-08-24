@@ -7,8 +7,6 @@ use tokio::{
 
 use serde_json::to_string;
 
-use smart_default::SmartDefault;
-
 use crate::{
     client::{ SyncClient, 
         websocket::{ 
@@ -17,7 +15,7 @@ use crate::{
         logs, settings::*
 }; 
 
-#[derive(SmartDefault)]
+#[derive(Default)]
 pub struct DiscordActivityApp {
     token: String,
     sync_client: Option<SyncClient>,
@@ -39,6 +37,7 @@ impl DiscordActivityApp {
             to_string( &GatewayEvent::from_settings(self.settings.clone())).unwrap()
         );
 
+        self.sync_client = Some(client);
     }
 
     fn disconnect(&mut self) {
@@ -121,10 +120,10 @@ impl eframe::App for DiscordActivityApp {
                 
                 ui.add_enabled( false,
                     egui::TextEdit::multiline(&mut self.logs.label)
+                        .text_color( self.logs.color )
                         .font(egui::TextStyle::Monospace) // for cursor height
                         .desired_rows(3)
                         .desired_width(f32::INFINITY)
-                        .background_color( self.logs.color )
                 );
 
                 // Mode toggle and start/stop
