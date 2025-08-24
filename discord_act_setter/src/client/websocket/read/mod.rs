@@ -1,19 +1,17 @@
-use crate::client::websocket::{types::{WebsocketReader, AtomicState}, error::{WebResult, ConnectionError}};
-use tokio_tungstenite::tungstenite::protocol::Message;
+mod events;
 
-use futures::StreamExt;
+use crate::client::websocket::{
+	read::events::*,
+	types::{WebsocketReader, AtomicState}, 
+	error::{WebResult, ConnectionError}
+};
+use tokio_tungstenite::tungstenite::protocol::Message;
 use tokio::{task, sync::Mutex, task::JoinHandle};
+use futures::StreamExt;
 use std::sync::Arc;
 
+use serde::Deserialize;
 use smart_default::SmartDefault;
-
-struct Hello {
-	heartbeat_interval: u64
-}
-
-struct Ready {
-	gateway_url: String
-}
 
 #[derive(SmartDefault)]
 pub struct WebsocketData {
@@ -26,52 +24,64 @@ pub struct WebsocketData {
 
 pub struct Client {
 	pub websocket_data: Arc<Mutex<WebsocketData>>,
-	thread: Option< JoinHandle<()> >,
-	reader: WebsocketReader,
+	pub thread: Option<JoinHandle<()>>,
 	pub state: AtomicState
 }
 
 impl Client {
-	pub async fn new( mut reader: WebsocketReader, state: AtomicState ) -> WebResult<Self> {
+	pub async fn new(mut reader: WebsocketReader, state: AtomicState) -> WebResult<Self> {
 		let mut data = WebsocketData::default();
 
-		// hello event
 		match reader.next().await {
-			Some( Ok(resp) ) => { println!("{:?}", resp); },
-			Some( Err(e) ) => { println!("{:?}", e); },
-			None => { println!("something went wrong"); }
+			Some(Ok(resp)) => {
+				let resp_ser: HelloEvent = serde_json::from_str(&resp.to_string())?;
+				data.heartbeat_interval = resp_ser.d.heartbeat_interval;
+			},
+			_ => return Err(ConnectionError::Unexpected)
 		}
 
-		// check for auth error
 		match reader.next().await {
-			Some( Ok( Message::Close(Some(resp))) ) => return Err( ConnectionError::InvalidAuthorization),
-			Some( Err(e) ) => return Err( ConnectionError::ConFailure( e.to_string() ) ),
-			_ => { println!("Something went wrong") }
+			Some(Ok(Message::Text(resp))) => {
+				let resp_ser: ReadyEvent = serde_json::from_str(&resp)?;
+				data.gateway_url = resp_ser.d.resume_gateway_url;
+			},
+			Some(Ok(Message::Close(Some(_resp)))) => return Err(ConnectionError::InvalidAuthorization),
+			Some(Err(e)) => return Err(ConnectionError::ConFailure(e.to_string())),
+			_ => return Err(ConnectionError::Unexpected)
 		}
 
 		let mut client = Client {
-			websocket_data: Arc::new( Mutex::new( data ) ),
+			websocket_data: Arc::new(Mutex::new(data)),
 			thread: None,
-			reader: reader,
-			state: state
-		};
+			state
+		};		
 
-		client.read();
+		client.read(reader);
 
-		Ok( client )
+		Ok(client)
 	}
 
-	fn read(&mut self) {
+	fn read(&mut self, mut reader: WebsocketReader) {
 		let atomic_state = self.state.clone();
 
-		task::spawn(async move {
-
-		});
+		self.thread = Some(task::spawn(async move {
+			loop {
+				match reader.next().await {
+					Some(Ok(_)) => {
+						// Placeholder: Handle actual message
+					},
+					_ => {
+						// Optionally handle errors or connection close
+						break;
+					}
+				}
+			}
+		}));
 	}
 
 	pub fn disconnect(&mut self) {
-		if let Some(read_task) = &self.thread {
-			read_task.abort();
+		if let Some(thread) = &self.thread {
+			thread.abort();
 		}
 	}
 }

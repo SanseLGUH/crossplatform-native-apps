@@ -14,6 +14,9 @@ pub enum ConnectionError {
     #[error("Invalid Auth-token: re-check your token!")]
     InvalidAuthorization,
 
+    #[error("Websocket encountered very unexpected error")]
+    Unexpected,
+
     #[error("Encountered unexpected connection error {0}")]
     ConFailure( String )
 }

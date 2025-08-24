@@ -47,18 +47,18 @@ impl WebClient {
         )
     }
 
-    pub async fn disconnect(&mut self) -> WebResult<()> {
+    pub async fn disconnect(&mut self) {
         self.write.disconnect().await;
         self.read.disconnect();
-
-        Ok(())
     }
 
     async fn reconnect(&mut self) -> WebResult<()> {
+        self.disconnect();
+
         let gateway_url = self.read.websocket_data.lock().await.gateway_url.clone();
 
         *self = Self::connect(&self.write.token, self.read.state.clone(), &gateway_url).await?;
 
-        todo!()
+        Ok(())
     }
 }

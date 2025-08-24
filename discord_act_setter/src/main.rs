@@ -1,3 +1,5 @@
+mod file_manager;
+
 mod app;
 
 // mod backend;

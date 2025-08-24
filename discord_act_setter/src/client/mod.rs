@@ -4,6 +4,7 @@ use tokio::runtime;
 use crossbeam_channel::{Sender, Receiver, bounded};
 
 use crate::{
+	file_manager::save_token,
 	client::{websocket::{WebClient, types::{AtomicState, WebSocketState, conerr_to_errocu} , error::WebResult}}, 
 	settings::WebsocketBackend
 };
@@ -26,7 +27,7 @@ impl SyncClient {
 
 	    std::thread::spawn( move || {
 	        let rt = runtime::Builder::new_multi_thread()
-	            .worker_threads(2)
+	            .worker_threads(1)
 	            .enable_all()
 	            .build()
 	            .unwrap();
@@ -38,6 +39,8 @@ impl SyncClient {
 	        	match WebClient::connect(&token, atomic_state_clone, "wss://gateway.discord.gg/?v=9&encoding=json").await {
 	        		Ok(mut async_client) => {
 			        	
+	        			save_token(&token);
+
 	        			web_state.store( WebSocketState::Connected );
 
 			        	loop {

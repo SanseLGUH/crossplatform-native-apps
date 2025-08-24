@@ -8,11 +8,12 @@ use tokio::{
 use serde_json::to_string;
 
 use crate::{
+    file_manager,
     client::{ SyncClient, 
         websocket::{ 
             structures::GatewayEvent, types::{AtomicState, WebSocketState} } 
         }, 
-        logs, settings::*
+    logs, settings::*
 }; 
 
 #[derive(Default)]
@@ -27,7 +28,17 @@ pub struct DiscordActivityApp {
 
 impl DiscordActivityApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-       Self::default()
+        match file_manager::read_token() {
+            Ok(token) => {
+                Self {
+                    token: token,
+                    ..Default::default()
+                }
+            }
+            Err(_) => {
+                Self::default()
+            }
+        }
     }
 
     fn run_sync_client(&mut self) {
