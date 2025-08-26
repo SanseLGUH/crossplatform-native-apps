@@ -2,7 +2,6 @@ use futures::stream::{SplitStream, SplitSink};
 use tokio_tungstenite::{ 
     WebSocketStream, 
     MaybeTlsStream, 
-    connect_async, 
     tungstenite::Message 
 };
 
@@ -16,7 +15,6 @@ pub type WebSocketSender = SplitSink<WebSocket, Message>;
 pub type SharedSender = Arc<Mutex<WebSocketSender>>;
 pub type WebsocketReader = SplitStream<WebSocket>;
 
-use thiserror::Error;
 use crate::client::websocket::error::ConnectionError;
 
 #[derive( PartialEq, Clone, Copy, Default, Debug)]
@@ -28,6 +26,8 @@ pub enum WebSocketState {
     Disconnected,
 
     WaitingForData,
+
+    Reconnection,
 
     ConnectionError( ConnectionErrorOccured )
 }

@@ -1,20 +1,12 @@
 use eframe::egui;
-
-use tokio::{ 
-    task::{ self, JoinHandle }, 
-    sync::oneshot 
-};
-
 use serde_json::to_string;
 
 use crate::{
     file_manager,
-    client::{ SyncClient, 
-        websocket::{ 
-            structures::GatewayEvent, types::{AtomicState, WebSocketState} } 
-        }, 
-    logs, settings::*
-}; 
+    client::{SyncClient, websocket::{structures::GatewayEvent, types::{AtomicState, WebSocketState}}},
+    logs::Layout,
+    settings::Settings,
+};
 
 #[derive(Default)]
 pub struct DiscordActivityApp {
@@ -22,7 +14,7 @@ pub struct DiscordActivityApp {
     sync_client: Option<SyncClient>,
     app_state: AtomicState,
     settings: Settings,
-    logs: logs::Layout,
+    logs: Layout,
     offline_mode: bool
 }
 
@@ -51,6 +43,16 @@ impl DiscordActivityApp {
         self.sync_client = Some(client);
     }
 
+    fn reconnect(&mut self, loaded_state: &WebSocketState) {
+        if WebSocketState::Reconnection != *loaded_state {
+            return;
+        }
+
+        if let Some(client) = &self.sync_client {
+            client.reconnect();
+        }
+    }
+
     fn disconnect(&mut self) {
         if let Some(client) = &self.sync_client {
             client.disconnect();
@@ -66,6 +68,7 @@ impl eframe::App for DiscordActivityApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             let conn_state = self.app_state.load();
 
+            self.reconnect(&conn_state);
             self.logs.update(&conn_state);
 
             ui.vertical_centered(|ui| {
@@ -126,8 +129,6 @@ impl eframe::App for DiscordActivityApp {
                 });
 
                 ui.add_space(7.0);
-                
-                
                 
                 ui.add_enabled( false,
                     egui::TextEdit::multiline(&mut self.logs.label)

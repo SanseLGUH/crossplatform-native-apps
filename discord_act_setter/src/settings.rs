@@ -1,11 +1,5 @@
 use smart_default::SmartDefault;
 
-use crossbeam::atomic::AtomicCell;
-use std::sync::Arc;
-
-use tokio::task::JoinHandle;
-use futures::stream::{SplitStream, SplitSink};
-
 use serde::{Serialize, Deserialize};
 
 use crate::client::websocket::types::AtomicState;

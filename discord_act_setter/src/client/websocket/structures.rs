@@ -1,9 +1,4 @@
-use smart_default::SmartDefault;
-
-use crossbeam::atomic::AtomicCell;
 use serde::{Serialize, Deserialize};
-use std::{ sync::Arc, sync::Mutex };
-use tokio::task::JoinHandle;
 
 use crate::settings::Settings;
 

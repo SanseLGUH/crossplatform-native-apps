@@ -33,6 +33,10 @@ impl Layout {
             }
             WebSocketState::ConnectionError(e) => {
                 self.label = format!("Connection failure: {:?}", e);
+            },
+            WebSocketState::Reconnection => {
+                self.color = Color32::ORANGE;
+                self.label = format!("Reconnection caused");
             }
         }
     }

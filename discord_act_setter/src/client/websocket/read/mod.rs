@@ -1,16 +1,18 @@
 mod events;
 
-use crate::client::websocket::{
-	read::events::*,
-	types::{WebsocketReader, AtomicState}, 
+use crate::client::{ SyncCommands, websocket::{
+	read::events::*, 
+	types::{WebsocketReader, AtomicState, WebSocketState}, 
 	error::{WebResult, ConnectionError}
-};
+}};
 use tokio_tungstenite::tungstenite::protocol::Message;
 use tokio::{task, sync::Mutex, task::JoinHandle};
+
+use crossbeam::channel::{Sender, Receiver, bounded};
+
 use futures::StreamExt;
 use std::sync::Arc;
 
-use serde::Deserialize;
 use smart_default::SmartDefault;
 
 #[derive(SmartDefault)]
@@ -24,8 +26,8 @@ pub struct WebsocketData {
 
 pub struct Client {
 	pub websocket_data: Arc<Mutex<WebsocketData>>,
-	pub thread: Option<JoinHandle<()>>,
-	pub state: AtomicState
+	pub command_recv: Receiver<SyncCommands>,
+	thread: JoinHandle<()>,
 }
 
 impl Client {
@@ -50,38 +52,39 @@ impl Client {
 			_ => return Err(ConnectionError::Unexpected)
 		}
 
+		let (send, recv) = bounded(2);
+
 		let mut client = Client {
 			websocket_data: Arc::new(Mutex::new(data)),
-			thread: None,
-			state
-		};		
-
-		client.read(reader);
+			command_recv: recv,
+			thread: Client::read(reader, send, state),
+		};
 
 		Ok(client)
 	}
 
-	fn read(&mut self, mut reader: WebsocketReader) {
-		let atomic_state = self.state.clone();
-
-		self.thread = Some(task::spawn(async move {
+	fn read(mut reader: WebsocketReader, command: Sender<SyncCommands>, state: AtomicState) -> JoinHandle<()> {
+		task::spawn(async move {
 			loop {
 				match reader.next().await {
-					Some(Ok(_)) => {
-						// Placeholder: Handle actual message
+					Some(_resp) => {
+						// command sending command to sync client to reconnect
+						command.send( SyncCommands::Reconnect );
 					},
 					_ => {
-						// Optionally handle errors or connection close
-						break;
+						println!("nothing responded");
 					}
 				}
+
+				tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 			}
-		}));
+		})
 	}
 
 	pub fn disconnect(&mut self) {
-		if let Some(thread) = &self.thread {
-			thread.abort();
-		}
+		self.thread.abort();
 	}
 }
+
+
+// this code is in raw stage

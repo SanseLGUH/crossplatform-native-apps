@@ -1,7 +1,5 @@
 use std::fs::File;
-use std::io::Write;
-use std::io::Read;
-use serde_json;
+use std::io::{Write, Read};
 
 pub fn read_token() -> Result<String, std::io::Error> {
 	let mut file = File::open("token.txt")?;
@@ -14,7 +12,7 @@ pub fn read_token() -> Result<String, std::io::Error> {
 
 pub fn save_token(token: &str) -> Result<(), std::io::Error> {
 	let mut file = File::create("token.txt")?;
-	file.write(token.as_bytes());
+	file.write(token.as_bytes())?;
 
 	Ok(())
 }

@@ -1,5 +1,5 @@
 use crate::client::websocket::{
-    types::{WebSocketSender, SharedSender},
+    types::SharedSender,
     structures::GatewayEvent,
 };
 
