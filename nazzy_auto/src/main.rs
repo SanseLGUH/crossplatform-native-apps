@@ -3,7 +3,7 @@ mod ui;
 
 use serde::{Serialize, Deserialize};
 
-pub const METADATA: &str = "http://178.250.187.252:4462/metadata/na_meta.json";
+pub const METADATA: &str = "http://magvik.space:4462/archive-meta/na.json";
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct MiniGame {
